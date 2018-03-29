@@ -4,40 +4,82 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-static bool handle_events_recieve_quit(SDL_Event* event)
+#define LOCAL_PERSIST static
+#define INTERNAL static
+
+INTERNAL void resize_sdl_texture(SDL_Texture* texture, SDL_Renderer* renderer, int width, int height)
+{
+	if (texture != NULL) {
+		SDL_DestroyTexture(texture);	
+	}	
+
+	texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
+					width, height);
+}
+
+INTERNAL void update_sdl_window(SDL_Window* window, SDL_Texture* window_texture)
+{
+	int window_width = 0;
+	int window_height = 0;
+
+	SDL_GetWindowSize(window, &window_width, &window_height);
+
+	SDL_Renderer* renderer = SDL_GetRenderer(window);
+
+	void* texture_pixels = NULL;
+	int texture_pitch = 0; // bytes per row
+	if (SDL_LockTexture(window_texture, NULL, &texture_pitch, &texture_width) < 0) {
+		fprintf(stderr, "Error encountered: %s\n", SDL_GetError());	
+		return;
+	}
+
+	memset(texture_pixels, 0, texture_pitch * window_height);
+
+	SDL_UnlockTexture(window_texture);
+
+	SDL_RenderCopy(renderer, window_texture, NULL, NULL); 
+	SDL_RenderPresent(renderer);
+}
+
+INTERNAL bool handle_events_recieve_quit(SDL_Event* event)
 {
 	bool quit_recieved = false;
 
 	switch (event->type) {
-	case SDL_QUIT:
+	 case SDL_QUIT:
+	 {
 		quit_recieved = true;
 		break;
-	case SDL_WINDOWEVENT:
+	 }
+	 case SDL_WINDOWEVENT:
+	 {
 		switch (event->window.event) {
-		case SDL_WINDOWEVENT_RESIZED:
-			printf("Resized window: (%d %d)\n", event.window.data1, event.window.data2);
+		 case SDL_WINDOWEVENT_RESIZED:
+		 {
+			printf("Resized window: (%d %d)\n", event->window.data1, event->window.data2);
+			resize_sdl_texture(texture, event->window.data1, event->window.data2);
 			break;
-		}
-		case SDL_WINDOWEVENT_FOCUS_GAINED:
+		 }
+		 case SDL_WINDOWEVENT_FOCUS_GAINED:
+		 {
 			puts("Focused on window");
 			break;
-		}
-		case SDL_WINDOWEVENT_EXPOSED:
-			SDL_Window* window = SDL_GetWindowFromID(event.windowID);
-			SDL_Renderer* renderer = SDL_GetRenderer(window);
-			static bool is_white = false;
-			if (is_white) {
-				SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);	
-			} else {
-				SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);	
-			}
-			SDL_RenderClear(renderer);
-			SDL_RenderPresent(renderer);
+		 }
+		 case SDL_WINDOWEVENT_EXPOSED:
+		 {
+			SDL_Window* window = SDL_GetWindowFromID(event->window.windowID);
+
+			update_sdl_window(window);
+
 			break;
+		 }
+		break;
 		}
+	 }
+	 default:
+	 {
 		break;
-	default:
-		break;
+	 }
 	}		
 
 	return quit_recieved;
@@ -67,7 +109,7 @@ int main(int argc, char* argv[argc + 1])
 
 	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0);
 
-	// TODO(Ryan) Add gcc cleanup
+	// TODO(Ryan) Add gcc cleanup (we want to handle cleanups in waves, i.e. aggregates)
 	if (renderer == NULL) {
 		fprintf(stderr, "Error encountered: %s\n", SDL_GetError());	
 		return EXIT_FAILURE;
@@ -80,7 +122,6 @@ int main(int argc, char* argv[argc + 1])
 			break;		
 		}
 	}
-
 	
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
