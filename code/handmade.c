@@ -64,6 +64,7 @@ INTERNAL void update_sdl_window(SDL_Window* window, SDL_Texture* window_texture)
 		return;
 	}
 
+	// Obtain desired colour from somewhere
 	memset(texture_pixels, 0, texture_pitch * window_height);
 
 	SDL_UnlockTexture(window_texture);
