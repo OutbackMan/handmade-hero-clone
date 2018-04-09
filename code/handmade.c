@@ -21,7 +21,7 @@ INTERNAL void init_sdl_audio(uint32_t samples_per_second, uint32_t buffer_size)
 	audio_settings.freq = samples_per_second;
 	audio_settings.format = AUDIO_S16LSB;
 	audio_settings.channels = 2;
-	audio_settings.samples = buffer_size;
+	audio_settings.samples = buffer_size / 2;
 
 	SDL_OpenAudio(&audio_settings, 0);
 
@@ -119,6 +119,7 @@ INTERNAL bool handle_events_recieve_quit(SDL_Event* event)
 				
 			}
 		}
+		// (unsigned char)("abcdefg"[loop_counter])
 
 		bool alt_key_was_down = (event->key.keysym.mod & KMOD_ALT);
 		if (keycode == SDLK_F4 && alt_key_was_down) {
@@ -204,6 +205,7 @@ int main(int argc, char* argv[argc + 1])
 	*/
 
 	// Can initalise subsystems later: SDL_InitSubsystem() 
+	// Can check for initialisation with: !SDL_WasInit()
 	if (SDL_Init(SDL_INIT_VIDEO) < 0) {
 		// TODO(Ryan) Custom logging and error handling
 		fprintf(stderr, "Error encountered: %s\n", SDL_GetError());	
@@ -233,13 +235,18 @@ int main(int argc, char* argv[argc + 1])
 	SDL_Texture bg_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
 					width, height);
 	
-	int samples_per_second = 48000;
-	int tone_hz = 256;
-	uint16_t tone_volume = 3000;
+	int samples_per_second = 48000; // 44.1kHz roughly gives a maximum frequency of 20kHz, so generally sufficient. (Niquist requires double of max)
+	// accuracy of the frequency
+
+	int tone_hz = 256; // named thusly to avoid ambiguity with sampling frequency. low pitch (bass), high (treble)
+	// adding various sine waves can create any sound
+	// this will play 256 48kHz samples on each polarity, giving 512 samples every full wave 
+
+	uint16_t tone_volume = 3000; 
 	uint32_t running_sample_index = 0;
-	int square_wave_period = samples_per_second / tone_hz;
-	int half_square_wave_period = square_wave_period / 2; 
-	int bytes_per_sample = sizeof(uint16_t) * 2;
+	int square_wave_period = samples_per_second / tone_hz; // how many samples per repeating unit
+	int half_square_wave_period = square_wave_period / 2;  // number of samples wave is high or low
+	int bytes_per_sample = sizeof(uint16_t) * 2; // bytes per channel
 	open_sdl_audio(48000, samples_per_second * bytes_per_sample / 60);
 	bool sound_is_playing = false;
 
@@ -265,11 +272,11 @@ int main(int argc, char* argv[argc + 1])
 			}		
 		} 
 
+		// may get latency as some times runs < 800 samples, so have no audio data
 		int target_queue_bytes = samples_per_second * bytes_per_sample;
 		int bytes_to_write = target_queue_bytes - SDL_GetQueuedAudioSize(1); 
 		if (bytes_to_write) {
-			void* sound_buffer = malloc(bytes_to_write);			
-			uint16_t sample_out = (uint16_t *)sound_buffer;
+			uint16_t sample_out = malloc(bytes_to_write);
 			int sample_count = bytes_to_write / bytes_per_sample;
 			for (int sample_index = 0; sample_index < sample_count; ++sample_index) {
 				uint16_t sample_value = ((running_sample_index++ / half_square_wave_period % 2) ? tone_volume: -tone_volume;
@@ -298,3 +305,19 @@ int main(int argc, char* argv[argc + 1])
 
 	return EXIT_SUCCESS;
 }
+
+INTERNAL void sound_generator(void)
+{
+	double 12th_root_of_2 = pow(2.0, 1.0 / 12.0);
+
+	double frequency = 110 * pow(12th_root_of_2, 5); // 5 semi-tones
+
+	double output = amplitude * sin(frequency * 2 * 3.14 * time); // add another sin() with offset frequency to create a chord
+
+	return (output > 0 ? 0.3 : -0.3);
+}
+
+// #ifdef (_MSC_VER)
+// #define RDTSC __rdtsc()
+// #else
+// #define RDTSC _rdtsc()
