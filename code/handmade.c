@@ -7,6 +7,37 @@
 #define LOCAL_PERSIST static
 #define INTERNAL static
 
+#define WINDOW_WIDTH 640
+#define WINDOW_HEIGHT 480
+
+#define MAX_CONTROLLERS 4
+
+INTERNAL void texture_set_colour(SDL_Texture* texture, SDL_Color* colour)
+{
+	int texture_width = 0;
+	int texture_height = 0;
+	SDL_QueryTexture(texture, NULL, NULL, &texture_width, &texture_height);
+
+	void* texture_pixels = NULL;	
+	int texture_pitch = 0;
+
+	uint32_t* texture_pixel = NULL;
+
+	if (SDL_LockTexture(texture, NULL, &texture_pitch, &texture_width) < 0) {
+		fprintf(stderr, "Error encountered: %s\n", SDL_GetError());	
+		return;
+	}
+
+	for (int row = 0; row < texture_width; ++row) {
+		texture_pixel = (uint32_t *)((uint8_t *)(texture_pixels) + row * texture_pitch)
+		for (int col = 0; col < texture_height; ++col) {
+			*texture_pixel++ = (0xFF000000 | (colour->r << 16) | (colour->g << 8) | (colour->b));
+		}
+	}	
+	
+	SDL_UnlockTexture(texture);	
+}
+
 INTERNAL void resize_sdl_texture(SDL_Texture* texture, SDL_Renderer* renderer, int width, int height)
 {
 	if (texture != NULL) {
@@ -43,6 +74,7 @@ INTERNAL void update_sdl_window(SDL_Window* window, SDL_Texture* window_texture)
 
 INTERNAL bool handle_events_recieve_quit(SDL_Event* event)
 {
+
 	bool quit_recieved = false;
 
 	switch (event->type) {
@@ -50,6 +82,24 @@ INTERNAL bool handle_events_recieve_quit(SDL_Event* event)
 	 {
 		quit_recieved = true;
 		break;
+	 }
+	 case SDL_KEYDOWN:
+	 case SDL_KEYUP:
+	 {
+		SDL_Keycode keycode = event->key.keysym.sym;
+		bool key_is_down = (event->key.state == SDL_PRESSED);
+		bool key_was_down = false;
+		if (event->key.state == SDL_RELEASED || event->key.repeat != 0) {
+			key_was_down = true;		
+		}
+
+		if (event->key.repeat == 0) {
+			if (keycode == SDLK_w) {
+				printf("w %s\n", (key_is_down ? "is down" : "was down"));
+			} else if (keycode == SDLK_a) {
+				
+			}
+		}
 	 }
 	 case SDL_WINDOWEVENT:
 	 {
@@ -85,14 +135,24 @@ INTERNAL bool handle_events_recieve_quit(SDL_Event* event)
 	return quit_recieved;
 }
 
+INTERNAL void open_sdl_game_controllers(void)
+{
+		
+}
+
 int main(int argc, char* argv[argc + 1])
 {
+	SDL_GameController* controller_handles[MAX_CONTROLLERS] = {0};
+	SDL_Haptic* rumble_handles[MAX_CONTROLLERS] = {0};
+
+	bool is_running = false;
 	/*
 	if (SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Handmade Clone", "Hello there", NULL) < 0) {
 		fprintf(stderr, "Error encountered: %s\n", SDL_GetError());	
 	}
 	*/
 
+	// Can initalise subsystems later: SDL_InitSubsystem() 
 	if (SDL_Init(SDL_INIT_VIDEO) < 0) {
 		// TODO(Ryan) Custom logging and error handling
 		fprintf(stderr, "Error encountered: %s\n", SDL_GetError());	
@@ -100,7 +160,7 @@ int main(int argc, char* argv[argc + 1])
 	}
 
 	SDL_Window* window = SDL_CreateWindow("Handmade Hero", SDL_WINDOWPOS_UNDEFINED, 
-							SDL_WINDOWPOS_UNDEFINED, 640, 480, SDL_WINDOW_RESIZABLE);
+							SDL_WINDOWPOS_UNDEFINED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_RESIZABLE);
 	if (window == NULL) {
 		// TODO(Ryan) Custom logging and error handling
 		fprintf(stderr, "Error encountered: %s\n", SDL_GetError());	
@@ -109,20 +169,27 @@ int main(int argc, char* argv[argc + 1])
 
 	SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0);
 
-	// TODO(Ryan) Add gcc cleanup (we want to handle cleanups in waves, i.e. aggregates)
 	if (renderer == NULL) {
 		fprintf(stderr, "Error encountered: %s\n", SDL_GetError());	
 		return EXIT_FAILURE;
 	}
 
-	while (true) {
+	is_running = true;
+	SDL_Texture bg_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
+					width, height);
+	
+	while (is_running) {
 		SDL_Event event = {0};
-		SDL_WaitEvent(&event);
-		if (handle_events_recieve_quit(&event)) {
-			break;		
+		while (SDL_PollEvent(&event)) {
+			if (handle_events_recieve_quit(&event)) {
+				is_running = false;		
+			}
 		}
+		texture_colour(texture, (&SDL_Color){10, 10, 10});
+		update_sdl_window(window);
 	}
 	
+	close_game_controllers();
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
 	SDL_Quit();
