@@ -136,9 +136,39 @@ INTERNAL bool handle_events_recieve_quit(SDL_Event* event)
 	return quit_recieved;
 }
 
-INTERNAL void open_sdl_game_controllers(void)
+INTERNAL void open_sdl_game_controllers(size_t max_controllers, SDL_GameController controllers[max_controllers], SDL_Haptic rumbles[max_controllers])
 {
-		
+	int num_joysticks = SDL_NumJoysticks();
+	int controller_index = 0;
+
+	for (int joystick_index = 0; joystick_index < num_joysticks; ++joystick_index) {
+		if (!SDL_IsGameController(joystick_index)) {
+			continue;		
+		}		
+		if (controller_index >= MAX_CONTROLLERS) {
+			break;	
+		}	
+
+		controllers[controller_index] = SDL_GameControllerOpen(joystick_index);
+		rumbles[controller_index] = SDL_HapticOpen(joystick_index);
+
+		if (rumbles[controller_index] != NULL && SDL_HapticRumbleInit(rumbles[controller_index]) != 0) {
+			SDL_HapticClose(rumbles[controller_index]);		
+			rumbles[controller_index] = 0;
+		}
+
+		++controller_index;
+	}
+}
+
+INTERNAL void close_sdl_game_controllers(size_t max_controllers, SDL_GameController controllers[max_controllers], SDL_Haptic rumbles[max_controllers])
+{
+	for (int controller_index = 0; controller_index < max_controllers; ++controller_index) {
+		if (controllers[controller_index] && rumbles[controller_index]) {
+			SDL_HapticClose(rumbles[controller_index]);		
+			SDL_GameControllerClose(controllers[controller_index]);
+		}
+	}
 }
 
 int main(int argc, char* argv[argc + 1])
@@ -186,8 +216,24 @@ int main(int argc, char* argv[argc + 1])
 				is_running = false;		
 			}
 		}
+
+		// To handle controllers added halfway: SDL_CONTROLLERDEVICEADDED
+		for (int controller_index = 0; controller_index < max_controllers; ++controller_index) {
+			if (controllers[controller_index] != 0 && SDL_GameControllerGetAttached(controllers[controller_index])) {
+				bool up = SDL_GameControllerGetButton(controllers[controller_index], SDL_CONTROLLER_BUTTON_DPAD_UP);		
+				uint16_t stick_x = SDL_GameControllerGetButton(controllers[controller_index], SDL_CONTROLLER_AXIS_LEFTX);	
+
+				if (up) {
+					if (rumbles[controller_index]) {
+						SDL_HapticRumblePlay(rumbles[controller_index], 0.5f, 2000);
+					}		
+				}
+			}		
+		} 
+
 		texture_colour(texture, (&SDL_Color){10, 10, 10});
 		update_sdl_window(window);
+
 	}
 	
 	close_game_controllers();
