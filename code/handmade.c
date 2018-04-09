@@ -12,6 +12,24 @@
 
 #define MAX_CONTROLLERS 4
 
+// Use SDL_QueueAudio() to avoid using a callback
+
+INTERNAL void init_sdl_audio(uint32_t samples_per_second, uint32_t buffer_size)
+{
+	SDL_AudioSpec audio_settings = {0};
+
+	audio_settings.freq = samples_per_second;
+	audio_settings.format = AUDIO_S16LSB;
+	audio_settings.channels = 2;
+	audio_settings.samples = buffer_size;
+
+	SDL_OpenAudio(&audio_settings, 0);
+
+	if (audio_settings.format != AUDIO_S16LSB) {
+		SDL_CloseAudio();		
+	}
+}
+
 INTERNAL void texture_set_colour(SDL_Texture* texture, SDL_Color* colour)
 {
 	int texture_width = 0;
@@ -101,6 +119,11 @@ INTERNAL bool handle_events_recieve_quit(SDL_Event* event)
 				
 			}
 		}
+
+		bool alt_key_was_down = (event->key.keysym.mod & KMOD_ALT);
+		if (keycode == SDLK_F4 && alt_key_was_down) {
+			// ...		
+		}
 	 }
 	 case SDL_WINDOWEVENT:
 	 {
@@ -173,9 +196,6 @@ INTERNAL void close_sdl_game_controllers(size_t max_controllers, SDL_GameControl
 
 int main(int argc, char* argv[argc + 1])
 {
-	SDL_GameController* controller_handles[MAX_CONTROLLERS] = {0};
-	SDL_Haptic* rumble_handles[MAX_CONTROLLERS] = {0};
-
 	bool is_running = false;
 	/*
 	if (SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION, "Handmade Clone", "Hello there", NULL) < 0) {
@@ -189,6 +209,10 @@ int main(int argc, char* argv[argc + 1])
 		fprintf(stderr, "Error encountered: %s\n", SDL_GetError());	
 		return EXIT_FAILURE;
 	}
+
+	SDL_GameController* controller_handles[MAX_CONTROLLERS] = {0};
+	SDL_Haptic* rumble_handles[MAX_CONTROLLERS] = {0};
+	open_sdl_controllers();
 
 	SDL_Window* window = SDL_CreateWindow("Handmade Hero", SDL_WINDOWPOS_UNDEFINED, 
 							SDL_WINDOWPOS_UNDEFINED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_RESIZABLE);
@@ -209,6 +233,16 @@ int main(int argc, char* argv[argc + 1])
 	SDL_Texture bg_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
 					width, height);
 	
+	int samples_per_second = 48000;
+	int tone_hz = 256;
+	uint16_t tone_volume = 3000;
+	uint32_t running_sample_index = 0;
+	int square_wave_period = samples_per_second / tone_hz;
+	int half_square_wave_period = square_wave_period / 2; 
+	int bytes_per_sample = sizeof(uint16_t) * 2;
+	open_sdl_audio(48000, samples_per_second * bytes_per_sample / 60);
+	bool sound_is_playing = false;
+
 	while (is_running) {
 		SDL_Event event = {0};
 		while (SDL_PollEvent(&event)) {
@@ -231,6 +265,27 @@ int main(int argc, char* argv[argc + 1])
 			}		
 		} 
 
+		int target_queue_bytes = samples_per_second * bytes_per_sample;
+		int bytes_to_write = target_queue_bytes - SDL_GetQueuedAudioSize(1); 
+		if (bytes_to_write) {
+			void* sound_buffer = malloc(bytes_to_write);			
+			uint16_t sample_out = (uint16_t *)sound_buffer;
+			int sample_count = bytes_to_write / bytes_per_sample;
+			for (int sample_index = 0; sample_index < sample_count; ++sample_index) {
+				uint16_t sample_value = ((running_sample_index++ / half_square_wave_period % 2) ? tone_volume: -tone_volume;
+				*sample_out++ = sample_value;
+				*sample_out++ = sample_value;
+			}
+			SDL_QueueAudio(1, sound_buffer, bytes_to_write);
+			free(sound_buffer);
+
+			if (!sound_is_playing) {
+				SDL_PauseAudio(0);
+				sound_is_playing = true;
+			}
+		}
+
+
 		texture_colour(texture, (&SDL_Color){10, 10, 10});
 		update_sdl_window(window);
 
@@ -241,5 +296,5 @@ int main(int argc, char* argv[argc + 1])
 	SDL_DestroyWindow(window);
 	SDL_Quit();
 
-	return EXIT_SUCCESS;	
+	return EXIT_SUCCESS;
 }
