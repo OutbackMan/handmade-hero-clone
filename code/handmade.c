@@ -12,22 +12,31 @@
 
 #define MAX_CONTROLLERS 4
 
+#define kHz 000
+#define PI32 3.14159265359f
+// We are building on a 64-bit system
+typedef float real32;
+typedef double real64;
+
 // Use SDL_QueueAudio() to avoid using a callback
 
-INTERNAL void init_sdl_audio(uint32_t samples_per_second, uint32_t buffer_size)
+INTERNAL void init_default_sdl_audio_device(uint32_t samples_per_second, uint32_t buffer_size, SDL_AudioDeviceID* audio_device_id)
 {
-	SDL_AudioSpec audio_settings = {0};
+	SDL_AudioSpec desired_audio_settings = {0};
 
-	audio_settings.freq = samples_per_second;
-	audio_settings.format = AUDIO_S16LSB;
-	audio_settings.channels = 2;
-	audio_settings.samples = buffer_size / 2;
+	desired_audio_settings.freq = samples_per_second;
+	desired_audio_settings.format = AUDIO_S16LSB;
+	desired_audio_settings.channels = 2;
+	desired_audio_settings.samples = buffer_size;
+	desired_audio_settings.callback = NULL;
 
-	SDL_OpenAudio(&audio_settings, 0);
+	SDL_AudioSpec actual_audio_settings = {0};
+	*audio_device_id = SDL_OpenAudioDevice(NULL, 0, &desired_audio_settings, &actual_audio_settings, 0);
 
-	if (audio_settings.format != AUDIO_S16LSB) {
-		SDL_CloseAudio();		
+	if (actual_audio_settings.format != desired_audio_settings.format) {
+		SDL_CloseAudioDevice(audio_device_id);	
 	}
+
 }
 
 INTERNAL void texture_set_colour(SDL_Texture* texture, SDL_Color* colour)
@@ -235,20 +244,36 @@ int main(int argc, char* argv[argc + 1])
 	SDL_Texture bg_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
 					width, height);
 	
-	int samples_per_second = 48000; // 44.1kHz roughly gives a maximum frequency of 20kHz, so generally sufficient. (Niquist requires double of max)
-	// accuracy of the frequency
 
-	int tone_hz = 256; // named thusly to avoid ambiguity with sampling frequency. low pitch (bass), high (treble)
-	// adding various sine waves can create any sound
-	// this will play 256 48kHz samples on each polarity, giving 512 samples every full wave 
+	SDL_AudioDeviceID audio_device_id = {0};
+	int sampling_rate = 44100; // 44.1kHz .Niquist requires double of max frequency
+	size_t bytes_per_sample = sizeof(uint16_t) * 2; // 2 channels
+	int sampling_buffer_size = sampling_rate * bytes_per_sample / 60; // assume 60fps. no 'correct' value
+	init_default_audio_device(sampling_rate, sampling_buffer_size, &audio_device_id);
 
-	uint16_t tone_volume = 3000; 
+	int audio_frequency = 256; // low pitch (bass), high (treble)
+	uint16_t audio_amplitude = 3000; 
 	uint32_t running_sample_index = 0;
-	int square_wave_period = samples_per_second / tone_hz; // how many samples per repeating unit
-	int half_square_wave_period = square_wave_period / 2;  // number of samples wave is high or low
-	int bytes_per_sample = sizeof(uint16_t) * 2; // bytes per channel
-	open_sdl_audio(48000, samples_per_second * bytes_per_sample / 60);
-	bool sound_is_playing = false;
+
+	while (is_running) {
+		int latency_sampling_count = sampling_rate / 15;  // investigate this latency
+		int desired_audio_bytes_to_queue = latency_sampling_count * bytes_per_sample;
+		int actual_audio_bytes_to_queue = desired_audio_bytes_to_queue - SDL_GetQueuedAudioSize(audio_device_id);
+		uint16_t* audio_buffer = malloc(actual_audio_bytes_to_queue);
+		int sample_count = actual_bytes_to_write / bytes_per_sample; 
+		for (int sample_index = 0; sample_index < sample_count; ++sample_index) {
+			*audio_buffer++ = // refer to sound generator
+			*audio_buffer++ = // refer to sound generator	
+		}	
+		SDL_QueueAudio(audio_device_id, audio_buffer, actual_audio_bytes_to_write);
+		free(audio_buffer);
+
+		if (SDL_GetAudioDeviceStatus(audio_device_id) != SDL_AUDIO_PLAYING) {
+			SDL_PauseAudioDevice(audio_device_id, 0); // play
+		}
+
+		SDL_CloseAudioDevice(audio_device_id);
+	}
 
 	while (is_running) {
 		SDL_Event event = {0};
@@ -272,25 +297,6 @@ int main(int argc, char* argv[argc + 1])
 			}		
 		} 
 
-		// may get latency as some times runs < 800 samples, so have no audio data
-		int target_queue_bytes = samples_per_second * bytes_per_sample;
-		int bytes_to_write = target_queue_bytes - SDL_GetQueuedAudioSize(1); 
-		if (bytes_to_write) {
-			uint16_t sample_out = malloc(bytes_to_write);
-			int sample_count = bytes_to_write / bytes_per_sample;
-			for (int sample_index = 0; sample_index < sample_count; ++sample_index) {
-				uint16_t sample_value = ((running_sample_index++ / half_square_wave_period % 2) ? tone_volume: -tone_volume;
-				*sample_out++ = sample_value;
-				*sample_out++ = sample_value;
-			}
-			SDL_QueueAudio(1, sound_buffer, bytes_to_write);
-			free(sound_buffer);
-
-			if (!sound_is_playing) {
-				SDL_PauseAudio(0);
-				sound_is_playing = true;
-			}
-		}
 
 
 		texture_colour(texture, (&SDL_Color){10, 10, 10});
